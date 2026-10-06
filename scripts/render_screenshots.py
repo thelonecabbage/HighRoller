@@ -1,7 +1,8 @@
 """Render README preview images from the animation frames (no watch or simulator needed).
 
 Usage (from high-roller/): python3 scripts/render_screenshots.py
-Requires: Pillow. Writes to docs/images/ (and 360x360 versions to docs/images/demo/).
+Requires: Pillow. Writes to docs/images/, plus 360x360 sets to docs/images/demo/ (round)
+and docs/images/demo-square/ (square).
 """
 import math
 from pathlib import Path
@@ -12,9 +13,9 @@ ROOT = Path(__file__).resolve().parent.parent
 FRAMES = ROOT / "assets" / "gt.r" / "anim"
 OUT = ROOT / "docs" / "images"
 SCREEN = 466  # Amazfit GTR 4
+SQUARE_SCREEN = 390  # square-screen layout (width of the Amazfit GTS series)
 DEMO_SIZE = 360
 ICON_SIZE = 240
-SCALE = SCREEN / 480  # px() in the app
 DICE = ["d4", "d6", "d8", "d10", "d12", "d20"]
 COLORS = {
     "d4": (0x28, 0xC8, 0x5A),
@@ -43,49 +44,76 @@ def frame(die, i):
     return Image.open(FRAMES / die / f"{die}_{i}.png").convert("RGB")
 
 
-def px(v):
-    return v * SCALE
+def px(v, screen=SCREEN):
+    return v * screen / 480  # same scaling as px() in the app
 
 
-def slot_centre(slot, slots=12, start=315):
-    radius = SCREEN / 2 - px(40)
+def slot_centre(slot, screen, slots=12, start=315):
+    radius = screen / 2 - px(40, screen)
     rad = math.radians(start + slot * 360 / slots)
-    return SCREEN / 2 + radius * math.sin(rad), SCREEN / 2 - radius * math.cos(rad)
+    return screen / 2 + radius * math.sin(rad), screen / 2 - radius * math.cos(rad)
 
 
-def round_mask(img):
+def screen_mask(img, shape):
     mask = Image.new("L", img.size, 0)
-    ImageDraw.Draw(mask).ellipse((0, 0, img.width - 1, img.height - 1), fill=255)
+    box = (0, 0, img.width - 1, img.height - 1)
+    if shape == "round":
+        ImageDraw.Draw(mask).ellipse(box, fill=255)
+    else:
+        ImageDraw.Draw(mask).rounded_rectangle(box, radius=img.width // 9, fill=255)
     out = img.convert("RGBA")
     out.putalpha(mask)
     return out
 
 
-def watch_screen(die, die_x_offset=0, extra=None, rolls=(), index=5):
-    """Compose one watch screen: die in the centre, rolls around the edge."""
-    img = Image.new("RGB", (SCREEN, SCREEN), (0, 0, 0))
+def watch_screen(die, die_x_offset=0, extra=None, rolls=(), index=5, screen=SCREEN, shape="round"):
+    """Compose one watch screen: die in the centre, rolls around the edge.
+
+    extra is (die name, x offset from centre) for a second die mid-swipe.
+    """
+    img = Image.new("RGB", (screen, screen), (0, 0, 0))
     d = ImageDraw.Draw(img)
-    top = (SCREEN - 200) // 2
-    img.paste(frame(die, index), ((SCREEN - 200) // 2 + die_x_offset, top))
+    left = (screen - 200) // 2
+    top = left
+    img.paste(frame(die, index), (left + die_x_offset, top))
     if extra:
-        name, x = extra
-        img.paste(frame(name, 5), (x, top))
-    text_font = font(round(px(30)))
+        name, x_offset = extra
+        img.paste(frame(name, 5), (left + x_offset, top))
+    text_font = font(round(px(30, screen)))
     for slot, (value, colour_die) in enumerate(rolls):
-        cx, cy = slot_centre(slot)
+        cx, cy = slot_centre(slot, screen)
         d.text((cx, cy), str(value), font=text_font, fill=COLORS[colour_die], anchor="mm")
     if len(rolls) >= 2:
-        cx, cy = slot_centre(len(rolls))
-        w, h = px(76), px(40)
+        cx, cy = slot_centre(len(rolls), screen)
+        w, h = px(76, screen), px(40, screen)
         d.rounded_rectangle((cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2), radius=h / 2, fill=GOLD)
         d.text((cx, cy), f"+{sum(v for v, _ in rolls)}", font=text_font, fill=(0, 0, 0), anchor="mm")
-    return round_mask(img)
+    return screen_mask(img, shape)
 
 
 def on_dark(img, pad=24):
     canvas = Image.new("RGB", (img.width + pad * 2, img.height + pad * 2), (24, 24, 28))
     canvas.paste(img, (pad, pad), img)
     return canvas
+
+
+def write_demo(folder, screen, shape, rolls, sample):
+    """One DEMO_SIZE x DEMO_SIZE image per screen, plus a spinning D20 GIF."""
+    folder.mkdir(parents=True, exist_ok=True)
+
+    def shot(*args, **kwargs):
+        img = watch_screen(*args, screen=screen, shape=shape, **kwargs)
+        return on_dark(img).resize((DEMO_SIZE, DEMO_SIZE), Image.LANCZOS)
+
+    shot("d20", rolls=rolls).save(folder / "rolls.png")
+    shot("d6", die_x_offset=-120, extra=("d8", 107), rolls=rolls[:3]).save(folder / "swipe.png")
+    for die in DICE:
+        shot(die, rolls=sample[die]).save(folder / f"{die}.png")
+    spin = [
+        shot("d20", rolls=rolls, index=i).convert("P", palette=Image.ADAPTIVE, colors=128)
+        for i in range(24)
+    ]
+    spin[0].save(folder / "d20-spin.gif", save_all=True, append_images=spin[1:], duration=round(1000 / 17), loop=0)
 
 
 def main():
@@ -95,7 +123,7 @@ def main():
     on_dark(watch_screen("d20", rolls=rolls)).save(OUT / "rolls.png")
 
     # Mid-swipe: the D6 is leaving left while the D8 scrolls in from the right.
-    on_dark(watch_screen("d6", die_x_offset=-120, extra=("d8", 240), rolls=rolls[:3])).save(OUT / "swipe.png")
+    on_dark(watch_screen("d6", die_x_offset=-120, extra=("d8", 107), rolls=rolls[:3])).save(OUT / "swipe.png")
 
     # One screen per die.
     sample = {
@@ -118,20 +146,9 @@ def main():
     spin[0].save(OUT / "d20-spin.gif", save_all=True, append_images=spin[1:], duration=round(1000 / 17), loop=0)
     print("wrote", ", ".join(p.name for p in sorted(OUT.iterdir())))
 
-    demo = OUT / "demo"
-    demo.mkdir(exist_ok=True)
-    to_demo = lambda img: on_dark(img).resize((DEMO_SIZE, DEMO_SIZE), Image.LANCZOS)
-    to_demo(watch_screen("d20", rolls=rolls)).save(demo / "rolls.png")
-    to_demo(watch_screen("d6", die_x_offset=-120, extra=("d8", 240), rolls=rolls[:3])).save(demo / "swipe.png")
-    for die in DICE:
-        to_demo(watch_screen(die, rolls=sample[die])).save(demo / f"{die}.png")
-    spin = [
-        to_demo(watch_screen("d20", rolls=rolls, index=i)).convert("P", palette=Image.ADAPTIVE, colors=128)
-        for i in range(24)
-    ]
-    spin[0].save(demo / "d20-spin.gif", save_all=True, append_images=spin[1:], duration=round(1000 / 17), loop=0)
-    print("wrote", len(list(demo.iterdir())), "demo images")
-
+    write_demo(OUT / "demo", SCREEN, "round", rolls, sample)
+    write_demo(OUT / "demo-square", SQUARE_SCREEN, "square", rolls, sample)
+    print("wrote demo and demo-square sets")
     icon_dir = ROOT / "docs" / "app-icon"
     icon_dir.mkdir(exist_ok=True)
     icon = Image.open(ROOT / "assets" / "gt.r" / "icon.png").convert("RGBA")
