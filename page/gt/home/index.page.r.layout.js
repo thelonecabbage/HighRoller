@@ -5,8 +5,9 @@ import { px } from "@zos/utils";
 export const { width: DEVICE_WIDTH, height: DEVICE_HEIGHT } = getDeviceInfo();
 
 // Frames are rendered at this fixed pixel size by scripts/render_d6.py and render_dice.py.
-const DIE_SIZE = 200;
+export const DIE_SIZE = 200;
 const ANIM_FRAMES = 24;
+const ANIM_FPS = 17; // frames were rendered for 24 fps; 17 is about 30% slower
 
 export const DICE = [
   { name: "d4", sides: 4, color: 0x28c85a },
@@ -28,22 +29,27 @@ const SLOT_H = px(40);
 const SUM_W = px(76);
 const SUM_COLOR = 0xffc107;
 
-const DIE_X = Math.floor((DEVICE_WIDTH - DIE_SIZE) / 2);
-const DIE_Y = Math.floor((DEVICE_HEIGHT - DIE_SIZE) / 2);
+export const DIE_X = Math.floor((DEVICE_WIDTH - DIE_SIZE) / 2);
+export const DIE_Y = Math.floor((DEVICE_HEIGHT - DIE_SIZE) / 2);
 
-export function dieAnimStyle(name) {
+export function dieAnimStyle(name, x = DIE_X, y = DIE_Y) {
   return {
-    x: DIE_X,
-    y: DIE_Y,
+    x,
+    y,
     w: DIE_SIZE,
     h: DIE_SIZE,
     anim_path: `anim/${name}`,
     anim_prefix: name,
     anim_ext: "png",
-    anim_fps: ANIM_FRAMES,
+    anim_fps: ANIM_FPS,
     anim_size: ANIM_FRAMES,
     repeat_count: 0,
   };
+}
+
+// Near-invisible full-screen rect that receives all touch events.
+export function hitAreaStyle() {
+  return { x: 0, y: 0, w: DEVICE_WIDTH, h: DEVICE_HEIGHT, color: 0x000000, alpha: 1 };
 }
 
 function slotCentre(slot) {

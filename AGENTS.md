@@ -13,14 +13,15 @@ A dice rolling app for D&D, built as a Zepp OS smartwatch app (Zeus CLI). The ap
 
 ## Behavior
 
-- The selected die spins continuously (looping PNG sequence in an `IMG_ANIM` widget).
-- Swipe left / right cycles through the dice (D4, D6, D8, D10, D12, D20, wrapping).
+- The selected die spins continuously (looping PNG sequence in an `IMG_ANIM` widget) at 17 fps, about 30% slower than the 24 fps the frames were rendered for.
+- Dragging left / right moves the die with the finger; past a threshold it slides off in that direction while the next / previous die scrolls in. No wrap-around: at D4 (drag right) and D20 (drag left) the die bounces back.
+- Dragging up / down nudges the die a little in that direction and it springs back on release.
 - Tap the die to roll: a random 1..N for the shown die.
 - Rolls appear in a ring around the screen edge: 12 slots, 30 degrees apart, starting upper-left (45 degrees above the left axis) and running clockwise. Each value uses its die's color.
 - With two or more rolls, a highlighted gold `+<sum>` pill appears in the next slot.
 - The ring holds 11 rolls plus the sum; the next roll after that restarts the ring.
 - Swipe up clears the ring.
-- The `onGesture` handler suppresses default swipes, so swipe right does not exit the app.
+- Touch is handled by a near-invisible full-screen `FILL_RECT` (CLICK_DOWN / MOVE / CLICK_UP), recreated above the die whenever a die is added. The `onGesture` handler only suppresses default swipes, so swiping right does not exit the app.
 
 ## Layout
 
