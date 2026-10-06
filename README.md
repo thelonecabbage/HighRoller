@@ -67,3 +67,7 @@ high-roller/
   scripts/                      frame and image generators
   docs/images/                  README images
 ```
+
+## License
+
+[MIT](LICENSE)
