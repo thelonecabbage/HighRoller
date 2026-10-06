@@ -1,7 +1,7 @@
 """Render README preview images from the animation frames (no watch or simulator needed).
 
 Usage (from high-roller/): python3 scripts/render_screenshots.py
-Requires: Pillow. Writes to docs/images/.
+Requires: Pillow. Writes to docs/images/ (and 360x360 versions to docs/images/demo/).
 """
 import math
 from pathlib import Path
@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parent.parent
 FRAMES = ROOT / "assets" / "gt.r" / "anim"
 OUT = ROOT / "docs" / "images"
 SCREEN = 466  # Amazfit GTR 4
+DEMO_SIZE = 360
+ICON_SIZE = 240
 SCALE = SCREEN / 480  # px() in the app
 DICE = ["d4", "d6", "d8", "d10", "d12", "d20"]
 COLORS = {
@@ -59,12 +61,12 @@ def round_mask(img):
     return out
 
 
-def watch_screen(die, die_x_offset=0, extra=None, rolls=()):
+def watch_screen(die, die_x_offset=0, extra=None, rolls=(), index=5):
     """Compose one watch screen: die in the centre, rolls around the edge."""
     img = Image.new("RGB", (SCREEN, SCREEN), (0, 0, 0))
     d = ImageDraw.Draw(img)
     top = (SCREEN - 200) // 2
-    img.paste(frame(die, 5), ((SCREEN - 200) // 2 + die_x_offset, top))
+    img.paste(frame(die, index), ((SCREEN - 200) // 2 + die_x_offset, top))
     if extra:
         name, x = extra
         img.paste(frame(name, 5), (x, top))
@@ -93,11 +95,18 @@ def main():
     on_dark(watch_screen("d20", rolls=rolls)).save(OUT / "rolls.png")
 
     # Mid-swipe: the D6 is leaving left while the D8 scrolls in from the right.
-    on_dark(watch_screen("d6", die_x_offset=-120, extra=("d8", 240))).save(OUT / "swipe.png")
+    on_dark(watch_screen("d6", die_x_offset=-120, extra=("d8", 240), rolls=rolls[:3])).save(OUT / "swipe.png")
 
     # One screen per die.
-    sample = {"d4": 3, "d6": 5, "d8": 6, "d10": 8, "d12": 11, "d20": 17}
-    shots = [on_dark(watch_screen(die, rolls=[(sample[die], die)])) for die in DICE]
+    sample = {
+        "d4": [(3, "d4"), (2, "d4"), (4, "d4")],
+        "d6": [(5, "d6"), (2, "d6"), (6, "d6")],
+        "d8": [(6, "d8"), (3, "d8"), (8, "d8")],
+        "d10": [(8, "d10"), (10, "d10"), (4, "d10")],
+        "d12": [(11, "d12"), (7, "d12"), (12, "d12")],
+        "d20": [(17, "d20"), (9, "d20"), (20, "d20")],
+    }
+    shots = [on_dark(watch_screen(die, rolls=sample[die])) for die in DICE]
     w, h = shots[0].size
     sheet = Image.new("RGB", (w * 3, h * 2), (24, 24, 28))
     for i, shot in enumerate(shots):
@@ -108,6 +117,25 @@ def main():
     spin = [frame("d20", i).convert("P", palette=Image.ADAPTIVE, colors=128) for i in range(24)]
     spin[0].save(OUT / "d20-spin.gif", save_all=True, append_images=spin[1:], duration=round(1000 / 17), loop=0)
     print("wrote", ", ".join(p.name for p in sorted(OUT.iterdir())))
+
+    demo = OUT / "demo"
+    demo.mkdir(exist_ok=True)
+    to_demo = lambda img: on_dark(img).resize((DEMO_SIZE, DEMO_SIZE), Image.LANCZOS)
+    to_demo(watch_screen("d20", rolls=rolls)).save(demo / "rolls.png")
+    to_demo(watch_screen("d6", die_x_offset=-120, extra=("d8", 240), rolls=rolls[:3])).save(demo / "swipe.png")
+    for die in DICE:
+        to_demo(watch_screen(die, rolls=sample[die])).save(demo / f"{die}.png")
+    spin = [
+        to_demo(watch_screen("d20", rolls=rolls, index=i)).convert("P", palette=Image.ADAPTIVE, colors=128)
+        for i in range(24)
+    ]
+    spin[0].save(demo / "d20-spin.gif", save_all=True, append_images=spin[1:], duration=round(1000 / 17), loop=0)
+    print("wrote", len(list(demo.iterdir())), "demo images")
+
+    icon_dir = ROOT / "docs" / "app-icon"
+    icon_dir.mkdir(exist_ok=True)
+    icon = Image.open(ROOT / "assets" / "gt.r" / "icon.png").convert("RGBA")
+    icon.resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS).save(icon_dir / "app-icon.png", optimize=True)
 
 
 if __name__ == "__main__":
